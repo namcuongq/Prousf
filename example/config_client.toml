@@ -1,0 +1,10 @@
+Server         = "10.10.10.10:443"
+Address        = "172.16.0.10/24"
+DefaultGateway = "172.16.0.1"
+MTU            = 1500
+TTL            = 30
+User           = "user"
+Pass           = "password"
+Whitelist 	   = []
+Blacklist 	   = []
+Incognito      = false

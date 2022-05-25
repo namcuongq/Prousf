@@ -1,0 +1,7 @@
+Server         = "10.10.10.10:443"
+Address        = "172.16.0.13/24"
+MTU            = 1500
+TTL            = 30
+Users = [
+	{Username = "user", Password = "password", Ipaddress = "172.16.0.13/24"},
+]

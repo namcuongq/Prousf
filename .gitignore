@@ -1,0 +1,4 @@
+wintun.dll
+*.exe
+main
+config.toml
