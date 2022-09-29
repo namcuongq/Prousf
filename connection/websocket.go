@@ -1,7 +1,9 @@
 package connection
 
 import (
+	"fmt"
 	"hivpn/log"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -35,6 +37,7 @@ func (self *tunWebsocket) OnAuthen(f func(id string, conn interface{}) (string, 
 func (t *tunWebsocket) handlerClient(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Debug("Upgrade socket error:", err)
 		return
 	}
 	defer c.Close()
@@ -49,7 +52,7 @@ func (t *tunWebsocket) handlerClient(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, frame, err := c.ReadMessage()
 		if err != nil {
-			log.Debug(err)
+			log.Debug("read message err:", err)
 			break
 		}
 
@@ -73,7 +76,7 @@ func (t *tunWebsocket) handlerServer(token string, c *websocket.Conn) {
 	cancel(idReq)
 }
 
-func (t *TUN) createWebSocket(addr string, token string) (newTun *tunWebsocket, runFunc func() error, err error) {
+func (t *TUN) createWebSocket(addr, token string) (newTun *tunWebsocket, runFunc func() error, err error) {
 	newTun = new(tunWebsocket)
 	if token == "" {
 		http.HandleFunc(WEBSOCKET_PATH, newTun.handlerClient)
@@ -83,11 +86,22 @@ func (t *TUN) createWebSocket(addr string, token string) (newTun *tunWebsocket, 
 		}
 	} else {
 		var c *websocket.Conn
+		var resp *http.Response
 		u := url.URL{Scheme: "ws", Host: addr, Path: WEBSOCKET_PATH}
-		c, _, err = websocket.DefaultDialer.Dial(u.String(), http.Header{
+
+		headerReq := http.Header{
 			AUTHEN_HEADER: []string{token},
-		})
+		}
+
+		if len(t.HostHeader) > 0 {
+			headerReq["Host"] = []string{t.HostHeader}
+		}
+
+		c, resp, err = websocket.DefaultDialer.Dial(u.String(), headerReq)
 		if err != nil {
+			defer resp.Body.Close()
+			b, _ := io.ReadAll(resp.Body)
+			err = fmt.Errorf("dail %s error: %s \n%v\n%s", u.String(), err.Error(), resp.Header, string(b))
 			return
 		}
 

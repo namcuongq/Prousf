@@ -22,6 +22,7 @@ type Config struct {
 	MTU            int
 	ServerAddr     string
 	LocalAddr      string
+	HostHeader     string
 	DefaultGateway string
 	IsServer       bool
 	Whitelist      []string
@@ -78,6 +79,7 @@ func Create(conf Config) (vpn *VPN, err error) {
 
 	virtualChannel := connection.TUN{
 		Addr:              vpn.conf.ServerAddr,
+		HostHeader:        vpn.conf.HostHeader,
 		FuncWriteTunToDev: vpn.writeTunToDev,
 		FuncAuthenConn:    vpn.authenConn,
 	}
@@ -190,7 +192,7 @@ func (vpn *VPN) handler() {
 	for {
 		n, err := vpn.dev.Read(buf, 0)
 		if err != nil {
-			log.Error(err)
+			log.Error("read data from vpn error", err)
 			continue
 		}
 		packet := buf[:n]

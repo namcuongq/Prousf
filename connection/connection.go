@@ -2,6 +2,7 @@ package connection
 
 type TUN struct {
 	Addr              string
+	HostHeader        string
 	Run               func() error
 	FuncWriteTunToDev func(key, data []byte)
 	FuncWriteDevToTun func(conn interface{}, data []byte) error

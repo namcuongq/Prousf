@@ -5,6 +5,7 @@ MTU            = 1500
 TTL            = 30
 User           = "user"
 Pass           = "password"
+HostHeader     = "google.com"
 Whitelist 	   = []
 Blacklist 	   = []
 Incognito      = false

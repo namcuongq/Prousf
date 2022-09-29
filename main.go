@@ -53,6 +53,7 @@ func main() {
 		MTU:            conf.MTU,
 		ServerAddr:     conf.Server,
 		LocalAddr:      conf.Address,
+		HostHeader:     conf.HostHeader,
 		DefaultGateway: conf.DefaultGateway,
 		IsServer:       ServerMode,
 		Users:          usersAuthen,

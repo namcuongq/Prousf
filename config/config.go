@@ -14,6 +14,7 @@ type Config struct {
 	TTL            int
 	User           string
 	Pass           string
+	HostHeader     string
 	Incognito      bool
 
 	Whitelist []string
