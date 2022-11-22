@@ -134,9 +134,14 @@ func Create(conf Config) (vpn *VPN, err error) {
 	log.Info("VPN started successfully!")
 	log.Info("Version:", VERSION)
 
-	for try := 0; try < 5; try++ {
+	for {
+		virtualChannel.TryNumber++
+		if virtualChannel.TryNumber > 5 {
+			log.Error("Failed to connect to server")
+			break
+		}
 		err = virtualChannel.Run()
-		log.Info(fmt.Sprintf("Try again(%d) in ", try+1), TIME_TO_TRY, "...")
+		log.Info(fmt.Sprintf("Try again(%d) in ", virtualChannel.TryNumber+1), TIME_TO_TRY, "...")
 		time.Sleep(TIME_TO_TRY)
 		err = virtualChannel.Connect(tokenUser, connectType)
 		if err != nil {

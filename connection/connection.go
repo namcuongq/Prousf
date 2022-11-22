@@ -3,6 +3,7 @@ package connection
 type TUN struct {
 	Addr              string
 	HostHeader        string
+	TryNumber         int
 	Run               func() error
 	FuncWriteTunToDev func(key, data []byte)
 	FuncWriteDevToTun func(conn interface{}, data []byte) error
@@ -24,7 +25,10 @@ func (self *TUN) Connect(token string, connectType int) error {
 
 		srcConn.OnFuncWriteTunToDev(self.FuncWriteTunToDev)
 		srcConn.OnAuthen(self.FuncAuthenConn)
-		self.FuncWriteDevToTun = srcConn.WriteDevToTun
+		self.FuncWriteDevToTun = func(conn interface{}, data []byte) error {
+			self.TryNumber = 0
+			return srcConn.WriteDevToTun(conn, data)
+		}
 
 		self.onRun(runFunc)
 	default:
