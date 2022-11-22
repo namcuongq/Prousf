@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type Config struct {
@@ -52,11 +53,13 @@ type VPN struct {
 
 const (
 	TUN_NAME = "MyNIC"
+
+	TIME_TO_TRY = 5 * time.Second
 )
 
 var (
 	YOUR_OS = runtime.GOOS
-	VERSION = "1.0.0"
+	VERSION = "1.0.1"
 )
 
 func Create(conf Config) (vpn *VPN, err error) {
@@ -130,7 +133,17 @@ func Create(conf Config) (vpn *VPN, err error) {
 
 	log.Info("VPN started successfully!")
 	log.Info("Version:", VERSION)
-	err = virtualChannel.Run()
+
+	for try := 0; try < 5; try++ {
+		err = virtualChannel.Run()
+		log.Info(fmt.Sprintf("Try again(%d) in ", try+1), TIME_TO_TRY, "...")
+		time.Sleep(TIME_TO_TRY)
+		err = virtualChannel.Connect(tokenUser, connectType)
+		if err != nil {
+			return
+		}
+		log.Info("Connect VPN again!")
+	}
 
 	return
 }

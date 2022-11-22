@@ -64,10 +64,11 @@ func (t *tunWebsocket) handlerClient(w http.ResponseWriter, r *http.Request) {
 func (t *tunWebsocket) handlerServer(token string, c *websocket.Conn) {
 	defer c.Close()
 	idReq, key, cancel := t.authen(token, c)
+
 	for {
 		_, message, err := c.ReadMessage()
 		if err != nil {
-			log.Error("Authentication failed please try again...!")
+			log.Error("Authentication failed Or Cannot connect to the server !", err)
 			break
 		}
 
