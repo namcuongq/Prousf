@@ -12,12 +12,13 @@ type TUN struct {
 
 const (
 	CONNECTION_TYPE_WEBSOCKET   = 1
-	ERROR_AUTHENTICATION_FAILER = "Authentication failed"
+	ERROR_AUTHENTICATION_FAILED = "Authentication failed"
 )
 
 func (self *TUN) Connect(token string, connectType int) error {
 	switch connectType {
 	case CONNECTION_TYPE_WEBSOCKET:
+		self.TryNumber++
 		srcConn, runFunc, err := self.createWebSocket(self.Addr, token)
 		if err != nil {
 			return err

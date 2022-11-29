@@ -55,11 +55,12 @@ const (
 	TUN_NAME = "MyNIC"
 
 	TIME_TO_TRY = 5 * time.Second
+	MAX_TRY     = 10
+	VERSION     = "1.1.0 - (29/11/2022)"
 )
 
 var (
 	YOUR_OS = runtime.GOOS
-	VERSION = "1.0.1"
 )
 
 func Create(conf Config) (vpn *VPN, err error) {
@@ -114,7 +115,6 @@ func Create(conf Config) (vpn *VPN, err error) {
 		vpn.getCurrentConnClient = vpn.arpTable.Query
 	}
 
-	log.Debug("Connect VPN")
 	err = virtualChannel.Connect(tokenUser, connectType)
 	if err != nil {
 		return
@@ -135,19 +135,17 @@ func Create(conf Config) (vpn *VPN, err error) {
 	log.Info("Version:", VERSION)
 
 	for {
-		virtualChannel.TryNumber++
-		if virtualChannel.TryNumber > 5 {
+		if virtualChannel.TryNumber > MAX_TRY {
 			log.Error("Failed to connect to server")
 			break
 		}
 		err = virtualChannel.Run()
-		log.Info(fmt.Sprintf("Try again(%d) in ", virtualChannel.TryNumber+1), TIME_TO_TRY, "...")
+		log.Info(fmt.Sprintf("Try again(%d) in ", virtualChannel.TryNumber), TIME_TO_TRY, "...")
 		time.Sleep(TIME_TO_TRY)
 		err = virtualChannel.Connect(tokenUser, connectType)
 		if err != nil {
-			return
+			log.Error("connect vpn", err)
 		}
-		log.Info("Connect VPN again!")
 	}
 
 	return
@@ -348,14 +346,14 @@ func (vpn *VPN) setupRoute() error {
 }
 
 func (vpn *VPN) stop() {
-	log.Info("Stop vpn!")
+	log.Info("Stop vpn ...")
 	if vpn.conf.IsServer {
 	} else {
 		if YOUR_OS == "linux" {
 
 		} else if YOUR_OS == "windows" {
 			for _, ipW := range vpn.conf.Whitelist {
-				err := runCmd("route", "delete", network.GetIp(ipW))
+				err := runCmd("route", "delete", network.GetIp(ipW), "mask", network.CIDRToMask(ipW))
 				if err != nil {
 					log.Error(err)
 				}
@@ -369,12 +367,13 @@ func (vpn *VPN) stop() {
 			}
 		}
 	}
+	log.Info("Done!(GoodBye)")
 	// fmt.Println("Press the Enter Key to exit!")
 	// fmt.Scanln()
 }
 
 func runCmd(c string, args ...string) error {
-	log.Info(c, strings.Join(args, " "))
+	log.Debug(c, strings.Join(args, " "))
 	cmd := exec.Command(c, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin

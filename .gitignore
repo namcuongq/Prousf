@@ -1,4 +1,6 @@
 wintun.dll
 *.exe
 main
+hivpn
+hivpn.exe
 config.toml

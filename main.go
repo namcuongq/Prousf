@@ -4,6 +4,7 @@ import (
 	"flag"
 	"hivpn/config"
 	"hivpn/log"
+	"hivpn/utils"
 	"hivpn/vpn"
 	"os"
 	"runtime"
@@ -42,6 +43,15 @@ func main() {
 			})
 		}
 	} else {
+		newDomain, newHost, err := utils.ValidServer(conf.Server)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+		conf.Server = newHost
+		if len(conf.HostHeader) < 1 {
+			conf.HostHeader = newDomain
+		}
 		usersAuthen = append(usersAuthen, vpn.User{
 			Name: conf.User,
 			Pass: conf.Pass,
@@ -61,7 +71,7 @@ func main() {
 		Blacklist:      conf.Blacklist,
 	})
 	if err != nil {
-		log.Error("create vpn error:", err)
+		log.Error("Cannot start tunnel vpn:", err)
 	}
 
 }

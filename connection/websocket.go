@@ -83,9 +83,11 @@ func (t *TUN) createWebSocket(addr, token string) (newTun *tunWebsocket, runFunc
 		http.HandleFunc(WEBSOCKET_PATH, newTun.handlerClient)
 
 		runFunc = func() error {
+			log.Info("Server listening on", addr)
 			return http.ListenAndServe(addr, nil)
 		}
 	} else {
+		log.Info("Connecting to", addr, "...")
 		var c *websocket.Conn
 		var resp *http.Response
 		u := url.URL{Scheme: "ws", Host: addr, Path: WEBSOCKET_PATH}
@@ -100,9 +102,14 @@ func (t *TUN) createWebSocket(addr, token string) (newTun *tunWebsocket, runFunc
 
 		c, resp, err = websocket.DefaultDialer.Dial(u.String(), headerReq)
 		if err != nil {
-			defer resp.Body.Close()
-			b, _ := io.ReadAll(resp.Body)
-			err = fmt.Errorf("dail %s error: %s \n%v\n%s", u.String(), err.Error(), resp.Header, string(b))
+			var b []byte
+			if resp != nil {
+				defer func() {
+					resp.Body.Close()
+				}()
+				b, _ = io.ReadAll(resp.Body)
+			}
+			err = fmt.Errorf("dial %s error: %s \n%s", u.String(), err.Error(), string(b))
 			return
 		}
 
