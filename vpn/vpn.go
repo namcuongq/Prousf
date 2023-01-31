@@ -29,6 +29,7 @@ type Config struct {
 	Whitelist      []string
 	Blacklist      []string
 	Users          []User
+	Incognito      bool
 }
 
 type User struct {
@@ -45,6 +46,7 @@ type VPN struct {
 	userTable map[string]User
 	blackList map[string]bool
 	myNetwork *net.IPNet
+	myIP      net.IP
 
 	writeDevToTun        func(header network.PacketHeader, data []byte) error
 	getCurrentConnClient func(ip string) network.ARPRecord
@@ -56,7 +58,8 @@ const (
 
 	TIME_TO_TRY = 5 * time.Second
 	MAX_TRY     = 10
-	VERSION     = "1.1.0 - (29/11/2022)"
+	VERSION     = "1.2.0"
+	RELEASE     = "(31/01/2023)"
 )
 
 var (
@@ -67,7 +70,7 @@ func Create(conf Config) (vpn *VPN, err error) {
 	vpn = new(VPN)
 	vpn.conf = conf
 	vpn.blackList = make(map[string]bool, 0)
-	_, vpn.myNetwork, err = net.ParseCIDR(vpn.conf.LocalAddr)
+	vpn.myIP, vpn.myNetwork, err = net.ParseCIDR(vpn.conf.LocalAddr)
 	if err != nil {
 		return
 	}
@@ -94,7 +97,7 @@ func Create(conf Config) (vpn *VPN, err error) {
 	vpn.setupAuthentication()
 
 	var tokenUser = ""
-	if !vpn.conf.IsServer {
+	if !vpn.conf.IsServer { //is client mode
 		for k, v := range vpn.userTable {
 			tokenByte, err := crypto.AESEncrypt([]byte(v.Pass), []byte(utils.GenUUID()))
 			if err != nil {
@@ -108,14 +111,15 @@ func Create(conf Config) (vpn *VPN, err error) {
 		vpn.inMyNetwork = func(ip net.IP) bool {
 			return false
 		}
-	} else {
+	} else { // is server mode
+
 		vpn.inMyNetwork = func(ip net.IP) bool {
 			return vpn.myNetwork.Contains(ip)
 		}
 		vpn.getCurrentConnClient = vpn.arpTable.Query
 	}
 
-	err = virtualChannel.Connect(tokenUser, connectType)
+	err = virtualChannel.Connect(tokenUser, connectType, vpn.arpTable)
 	if err != nil {
 		return
 	}
@@ -132,7 +136,7 @@ func Create(conf Config) (vpn *VPN, err error) {
 	vpn.handlerCtrC()
 
 	log.Info("VPN started successfully!")
-	log.Info("Version:", VERSION)
+	log.Info("Version:", VERSION, "-", RELEASE)
 
 	for {
 		if virtualChannel.TryNumber > MAX_TRY {
@@ -142,7 +146,7 @@ func Create(conf Config) (vpn *VPN, err error) {
 		err = virtualChannel.Run()
 		log.Info(fmt.Sprintf("Try again(%d) in ", virtualChannel.TryNumber), TIME_TO_TRY, "...")
 		time.Sleep(TIME_TO_TRY)
-		err = virtualChannel.Connect(tokenUser, connectType)
+		err = virtualChannel.Connect(tokenUser, connectType, vpn.arpTable)
 		if err != nil {
 			log.Error("connect vpn", err)
 		}
@@ -163,7 +167,7 @@ func (vpn *VPN) handlerCtrC() {
 
 func (vpn *VPN) OnFuncWriteDevToTun(tunWrite func(c interface{}, data []byte) error) {
 	vpn.writeDevToTun = func(header network.PacketHeader, data []byte) error {
-		log.Debug("IPv6:", header.IsIPv6, "Src:", header.IPSrc.String(), "Dst:", header.IPDst.String(), string(data))
+		// log.Debug("IPv6:", header.IsIPv6, "Src:", header.IPSrc.String(), "Dst:", header.IPDst.String())
 
 		r := vpn.getCurrentConnClient(header.IPDst.String())
 		if r.Conn == nil {
@@ -189,7 +193,13 @@ func (vpn *VPN) writeTunToDev(key, data []byte) {
 	}
 
 	header := network.ParseHeaderPacket(rawData)
-	if vpn.inMyNetwork(header.IPDst) {
+
+	toSelf := header.IPDst.Equal(vpn.myIP)
+	if toSelf && vpn.conf.Incognito {
+		return
+	}
+
+	if !toSelf && vpn.inMyNetwork(header.IPDst) {
 		err = vpn.writeDevToTun(header, rawData)
 		if err != nil {
 			log.Debug("write dev to tun error", err)
@@ -228,38 +238,35 @@ func (vpn *VPN) handler() {
 	}
 }
 
-func (self *VPN) authenConn(token string, conn interface{}) (string, []byte, func(id string)) {
+func (self *VPN) authenConn(token string) (string, []byte) {
 	arr := strings.Split(token, ":")
 	if len(arr) < 2 {
-		return "", nil, nil
+		return "", nil
 	}
 	user := arr[0]
 	u, found := self.userTable[user]
 	if !found {
-		return "", nil, nil
+		return "", nil
 	}
 	keyBase64 := arr[1]
 
 	tokenByte, err := base64.StdEncoding.DecodeString(keyBase64)
 	if err != nil {
-		return "", nil, nil
+		return "", nil
 	}
 
 	keyByte, err := crypto.AESDecrypt([]byte(u.Pass), tokenByte)
 	if err != nil {
-		return "", nil, nil
+		return "", nil
 	}
 
 	for _, c := range keyByte {
 		if c < 48 || (58 < c && c < 64) || (91 < c && c < 96) || c > 123 {
-			return "", nil, nil
+			return "", nil
 		}
 	}
 
-	if !self.arpTable.Update(u.IP, conn, keyByte) {
-		return u.IP, keyByte, self.arpTable.Delete
-	}
-	return "", nil, nil
+	return u.IP, keyByte
 }
 
 func (vpn *VPN) setupAuthentication() {
@@ -374,13 +381,18 @@ func (vpn *VPN) stop() {
 
 func runCmd(c string, args ...string) error {
 	log.Debug(c, strings.Join(args, " "))
+	b := new(strings.Builder)
 	cmd := exec.Command(c, args...)
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = b
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 	if err != nil {
 		err = fmt.Errorf("run cmd error: %v", err)
+	}
+
+	if strings.TrimSpace(b.String()) != "OK!" && strings.TrimSpace(b.String()) != "" {
+		fmt.Println(b.String())
 	}
 	return err
 }

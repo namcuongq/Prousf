@@ -1,5 +1,9 @@
 package connection
 
+import (
+	"hivpn/network"
+)
+
 type TUN struct {
 	Addr              string
 	HostHeader        string
@@ -7,7 +11,7 @@ type TUN struct {
 	Run               func() error
 	FuncWriteTunToDev func(key, data []byte)
 	FuncWriteDevToTun func(conn interface{}, data []byte) error
-	FuncAuthenConn    func(token string, conn interface{}) (string, []byte, func(id string))
+	FuncAuthenConn    func(token string) (string, []byte)
 }
 
 const (
@@ -15,11 +19,11 @@ const (
 	ERROR_AUTHENTICATION_FAILED = "Authentication failed"
 )
 
-func (self *TUN) Connect(token string, connectType int) error {
+func (self *TUN) Connect(token string, connectType int, arpTable *network.ARP) error {
 	switch connectType {
 	case CONNECTION_TYPE_WEBSOCKET:
 		self.TryNumber++
-		srcConn, runFunc, err := self.createWebSocket(self.Addr, token)
+		srcConn, runFunc, err := self.createWebSocket(self.Addr, token, arpTable)
 		if err != nil {
 			return err
 		}

@@ -6,6 +6,7 @@ TTL            = 30
 User           = "user"
 Pass           = "password"
 HostHeader     = "google.com"
+Incognito      = true
 Whitelist 	   = []
 Blacklist 	   = []
 Incognito      = false

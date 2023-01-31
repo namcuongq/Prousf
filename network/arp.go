@@ -2,10 +2,12 @@ package network
 
 import (
 	"sync"
+
+	"github.com/fasthttp/websocket"
 )
 
 type ARPRecord struct {
-	Conn interface{}
+	Conn *websocket.Conn
 	Key  []byte
 }
 
@@ -44,19 +46,22 @@ func (arp *ARP) Query(ip string) ARPRecord {
 }
 
 func (arp *ARP) Delete(id string) {
+	if len(id) < 1 {
+		return
+	}
 	arp.mu.Lock()
 	defer arp.mu.Unlock()
 	delete(arp.Table, id)
 }
 
-func (arp *ARP) Update(id string, conn interface{}, key []byte) bool {
+func (arp *ARP) Update(id string, conn *websocket.Conn, key []byte) {
 	arp.mu.Lock()
 	defer arp.mu.Unlock()
-	_, found := arp.Table[id]
+	current, found := arp.Table[id]
 	if found {
-		return found
+		current.Conn.WriteMessage(websocket.TextMessage, []byte("You have logged in at another location"))
+		current.Conn.Close()
 	}
 
 	arp.Table[id] = ARPRecord{conn, key}
-	return found
 }

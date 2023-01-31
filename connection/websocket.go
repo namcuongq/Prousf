@@ -3,6 +3,7 @@ package connection
 import (
 	"fmt"
 	"hivpn/log"
+	"hivpn/network"
 	"io"
 	"net/http"
 	"net/url"
@@ -19,7 +20,8 @@ var upgrader = websocket.Upgrader{}
 
 type tunWebsocket struct {
 	writeTunToDev func(key, data []byte)
-	authen        func(id string, conn interface{}) (string, []byte, func(id string))
+	authen        func(id string) (string, []byte)
+	arpTable      *network.ARP
 }
 
 func (self *tunWebsocket) OnFuncWriteTunToDev(f func(key, data []byte)) {
@@ -30,55 +32,61 @@ func (self *tunWebsocket) WriteDevToTun(conn interface{}, data []byte) error {
 	return conn.(*websocket.Conn).WriteMessage(websocket.BinaryMessage, data)
 }
 
-func (self *tunWebsocket) OnAuthen(f func(id string, conn interface{}) (string, []byte, func(id string))) {
+func (self *tunWebsocket) OnAuthen(f func(id string) (string, []byte)) {
 	self.authen = f
 }
 
 func (t *tunWebsocket) handlerClient(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get(AUTHEN_HEADER)
+	idRequest, key := t.authen(token)
+
+	if len(idRequest) < 1 {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(ERROR_AUTHENTICATION_FAILED))
+		log.Debug(r.RemoteAddr, ERROR_AUTHENTICATION_FAILED)
+		return
+	}
+
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Debug("Upgrade socket error:", err)
 		return
 	}
-	defer c.Close()
+	t.readMessage(c, idRequest, key, 1)
+}
 
-	token := r.Header.Get(AUTHEN_HEADER)
-	idRequest, key, cancel := t.authen(token, c)
+func (t *tunWebsocket) handlerServer(token string, c *websocket.Conn) {
+	idReq, key := t.authen(token)
+	t.readMessage(c, idReq, key, 0)
+}
 
-	if len(idRequest) < 1 {
-		return
-	}
+func (t *tunWebsocket) readMessage(c *websocket.Conn, idRequest string, key []byte, mode int) {
+	defer func() {
+		c.Close()
+		t.arpTable.Delete(idRequest)
+	}()
+
+	t.arpTable.Update(idRequest, c, key)
 
 	for {
-		_, frame, err := c.ReadMessage()
+		messType, frame, err := c.ReadMessage()
 		if err != nil {
 			log.Debug("read message err:", err)
 			break
 		}
 
-		t.writeTunToDev(key, frame)
-	}
-	cancel(idRequest)
-}
-
-func (t *tunWebsocket) handlerServer(token string, c *websocket.Conn) {
-	defer c.Close()
-	idReq, key, cancel := t.authen(token, c)
-
-	for {
-		_, message, err := c.ReadMessage()
-		if err != nil {
-			log.Error("Authentication failed Or Cannot connect to the server !", err)
-			break
+		if messType == websocket.TextMessage {
+			log.Info(string(frame))
+			continue
 		}
 
-		t.writeTunToDev(key, message)
+		t.writeTunToDev(key, frame)
 	}
-	cancel(idReq)
 }
 
-func (t *TUN) createWebSocket(addr, token string) (newTun *tunWebsocket, runFunc func() error, err error) {
+func (t *TUN) createWebSocket(addr, token string, arpTable *network.ARP) (newTun *tunWebsocket, runFunc func() error, err error) {
 	newTun = new(tunWebsocket)
+	newTun.arpTable = arpTable
 	if token == "" {
 		http.HandleFunc(WEBSOCKET_PATH, newTun.handlerClient)
 
@@ -112,7 +120,7 @@ func (t *TUN) createWebSocket(addr, token string) (newTun *tunWebsocket, runFunc
 			err = fmt.Errorf("dial %s error: %s \n%s", u.String(), err.Error(), string(b))
 			return
 		}
-
+		log.Info("Successful connection to the server", addr)
 		runFunc = func() error {
 			newTun.handlerServer(token, c)
 			return nil
