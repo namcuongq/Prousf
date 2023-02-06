@@ -1,10 +1,8 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -49,31 +47,32 @@ func checkNotIPAddress(ip string) bool {
 	return net.ParseIP(ip) == nil
 }
 
-func CheckUpdate(currentVersion string) {
-	var data []struct {
-		TagName string `json:"tag_name"`
-	}
-	resp, err := http.Get("https://api.github.com/repos/namcuongq/hivpn/releases")
+func CheckUpdate(link, currentVersion, host string) string {
+	req, err := http.NewRequest("GET", link, nil)
 	if err != nil {
-		log.Println("check update failed", err)
-		return
+		return "check update failed " + err.Error() + "\n"
+	}
+
+	req.Host = host
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "check update failed " + err.Error() + "\n"
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("check update failed", err)
-		return
+		return "check update failed " + err.Error() + "\n"
 	}
 
 	cv := versionOrdinal(currentVersion)
-	json.Unmarshal(bodyBytes, &data)
-	for _, v := range data {
-		if cv > versionOrdinal(v.TagName) {
-			log.Println("Please update to latest version", v.TagName, fmt.Sprintf("from https://github.com/namcuongq/hivpn/releases/download/%s", v.TagName))
-			break
-		}
+	newVersion := string(bodyBytes)
+	if cv < versionOrdinal(newVersion) {
+		return "Please update to latest version " + newVersion + " at https://github.com/namcuongq/hivpn/releases/download/" + newVersion + "\n"
 	}
+
+	return ""
 }
 
 func versionOrdinal(version string) string {

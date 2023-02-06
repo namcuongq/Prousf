@@ -51,6 +51,7 @@ type VPN struct {
 	writeDevToTun        func(header network.PacketHeader, data []byte) error
 	getCurrentConnClient func(ip string) network.ARPRecord
 	inMyNetwork          func(ip net.IP) bool
+	checkUpdate          func(string, string, string) string
 }
 
 const (
@@ -58,8 +59,6 @@ const (
 
 	TIME_TO_TRY = 5 * time.Second
 	MAX_TRY     = 10
-	VERSION     = "1.2.0"
-	RELEASE     = "(31/01/2023)"
 )
 
 var (
@@ -111,12 +110,16 @@ func Create(conf Config) (vpn *VPN, err error) {
 		vpn.inMyNetwork = func(ip net.IP) bool {
 			return false
 		}
+		vpn.checkUpdate = utils.CheckUpdate
 	} else { // is server mode
 
 		vpn.inMyNetwork = func(ip net.IP) bool {
 			return vpn.myNetwork.Contains(ip)
 		}
 		vpn.getCurrentConnClient = vpn.arpTable.Query
+		vpn.checkUpdate = func(s1, s2, s3 string) string {
+			return ""
+		}
 	}
 
 	err = virtualChannel.Connect(tokenUser, connectType, vpn.arpTable)
@@ -136,23 +139,44 @@ func Create(conf Config) (vpn *VPN, err error) {
 	vpn.handlerCtrC()
 
 	log.Info("VPN started successfully!")
-	log.Info("Version:", VERSION, "-", RELEASE)
+	log.Info("Version:", log.VERSION, "-", log.RELEASE)
+	fmt.Print(vpn.checkUpdate("http://"+vpn.conf.ServerAddr+connection.VERSION_PATH, log.VERSION, vpn.conf.HostHeader))
 
+	err = virtualChannel.Run()
+	if err != nil {
+		log.Error("run vpn error", err)
+		return
+	}
+	virtualChannel.Close()
+
+	//reconnect to server
+	vpn.reconnect(virtualChannel, tokenUser, connectType)
+	return
+}
+
+func (vpn *VPN) reconnect(virtualChannel connection.TUN, tokenUser string, connectType int) {
 	for {
-		if virtualChannel.TryNumber > MAX_TRY {
-			log.Error("Failed to connect to server")
+		if virtualChannel.TryNumber >= MAX_TRY {
 			break
 		}
-		err = virtualChannel.Run()
-		log.Info(fmt.Sprintf("Try again(%d) in ", virtualChannel.TryNumber), TIME_TO_TRY, "...")
-		time.Sleep(TIME_TO_TRY)
-		err = virtualChannel.Connect(tokenUser, connectType, vpn.arpTable)
+		vpn.skipDev()
+		err := virtualChannel.Connect(tokenUser, connectType, vpn.arpTable)
 		if err != nil {
 			log.Error("connect vpn", err)
+		} else {
+			vpn.OnFuncWriteDevToTun(virtualChannel.FuncWriteDevToTun)
+			virtualChannel.Run()
 		}
+		virtualChannel.Close()
+		log.Info(fmt.Sprintf("Try again(%d/%d) in ", virtualChannel.TryNumber, MAX_TRY), TIME_TO_TRY, "...")
+		time.Sleep(TIME_TO_TRY)
 	}
+}
 
-	return
+func (vpn *VPN) skipDev() {
+	vpn.writeDevToTun = func(header network.PacketHeader, data []byte) error {
+		return nil
+	}
 }
 
 func (vpn *VPN) handlerCtrC() {
@@ -171,7 +195,7 @@ func (vpn *VPN) OnFuncWriteDevToTun(tunWrite func(c interface{}, data []byte) er
 
 		r := vpn.getCurrentConnClient(header.IPDst.String())
 		if r.Conn == nil {
-			log.Debug("connection not found", header.IPDst)
+			// log.Debug("connection not found", header.IPDst)
 			return nil
 		}
 
@@ -202,14 +226,14 @@ func (vpn *VPN) writeTunToDev(key, data []byte) {
 	if !toSelf && vpn.inMyNetwork(header.IPDst) {
 		err = vpn.writeDevToTun(header, rawData)
 		if err != nil {
-			log.Debug("write dev to tun error", err)
+			log.Debug("write dev to local error", err)
 		}
 		return
 	}
 
 	_, err = vpn.dev.Write(rawData, 0)
 	if err != nil {
-		log.Error("write tun to dev err", err)
+		log.Error("write dev err", err)
 	}
 }
 
@@ -220,6 +244,11 @@ func (vpn *VPN) handler() {
 		if err != nil {
 			log.Error("read data from vpn error", err)
 			continue
+		}
+
+		if n > vpn.conf.MTU {
+			log.Info("read large data", n, vpn.conf.MTU)
+			n = vpn.conf.MTU
 		}
 		packet := buf[:n]
 
@@ -372,6 +401,7 @@ func (vpn *VPN) stop() {
 					log.Error(err)
 				}
 			}
+			// vpn.dev.Close()
 		}
 	}
 	log.Info("Done!(GoodBye)")

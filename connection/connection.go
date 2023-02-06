@@ -12,6 +12,7 @@ type TUN struct {
 	FuncWriteTunToDev func(key, data []byte)
 	FuncWriteDevToTun func(conn interface{}, data []byte) error
 	FuncAuthenConn    func(token string) (string, []byte)
+	Close             func()
 }
 
 const (
@@ -24,6 +25,7 @@ func (self *TUN) Connect(token string, connectType int, arpTable *network.ARP) e
 	case CONNECTION_TYPE_WEBSOCKET:
 		self.TryNumber++
 		srcConn, runFunc, err := self.createWebSocket(self.Addr, token, arpTable)
+		self.Close = srcConn.OnClose
 		if err != nil {
 			return err
 		}
@@ -31,7 +33,6 @@ func (self *TUN) Connect(token string, connectType int, arpTable *network.ARP) e
 		srcConn.OnFuncWriteTunToDev(self.FuncWriteTunToDev)
 		srcConn.OnAuthen(self.FuncAuthenConn)
 		self.FuncWriteDevToTun = func(conn interface{}, data []byte) error {
-			self.TryNumber = 0
 			return srcConn.WriteDevToTun(conn, data)
 		}
 

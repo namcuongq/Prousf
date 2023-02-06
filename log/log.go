@@ -5,6 +5,9 @@ import (
 )
 
 const (
+	VERSION = "1.3.0"
+	RELEASE = "(04/02/2023)"
+
 	LevelDebug = iota
 	LevelInfo
 	LevelWarning

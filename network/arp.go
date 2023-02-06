@@ -1,6 +1,7 @@
 package network
 
 import (
+	"hivpn/log"
 	"sync"
 
 	"github.com/fasthttp/websocket"
@@ -34,6 +35,13 @@ func (arp *ARP) QueryOne(ip string) ARPRecord {
 	return ARPRecord{}
 }
 
+func (arp *ARP) IsExist(ip string) bool {
+	// arp.mu.Lock()
+	// defer arp.mu.Unlock()
+	_, found := arp.Table[ip]
+	return found
+}
+
 func (arp *ARP) Query(ip string) ARPRecord {
 	// arp.mu.Lock()
 	// defer arp.mu.Unlock()
@@ -51,6 +59,7 @@ func (arp *ARP) Delete(id string) {
 	}
 	arp.mu.Lock()
 	defer arp.mu.Unlock()
+	log.Debug("arptable remove", id)
 	delete(arp.Table, id)
 }
 
