@@ -5,10 +5,8 @@ import (
 )
 
 const (
-	VERSION = "1.3.0"
-	RELEASE = "(04/02/2023)"
-
-	LevelDebug = iota
+	LevelTrace = iota
+	LevelDebug
 	LevelInfo
 	LevelWarning
 	LevelError
@@ -18,6 +16,12 @@ var level = LevelDebug
 
 func SetLevel(l int) {
 	level = l
+}
+
+func Trace(v ...interface{}) {
+	if level <= LevelTrace {
+		log.Println(append([]interface{}{"[Trace]"}, v...)...)
+	}
 }
 
 func Debug(v ...interface{}) {

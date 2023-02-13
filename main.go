@@ -8,6 +8,7 @@ import (
 	"hivpn/vpn"
 	"os"
 	"runtime"
+	"time"
 )
 
 var (
@@ -19,7 +20,7 @@ var (
 func init() {
 	flag.StringVar(&configPath, "config", "config.toml", "location of the config file")
 	flag.BoolVar(&ServerMode, "S", false, "server mode")
-	flag.IntVar(&logLevel, "l", log.LevelInfo, "log level: [0-DEBUG 1-INFO 2-ERROR]")
+	flag.IntVar(&logLevel, "l", log.LevelInfo, "log level: [1-DEBUG 2-INFO 3-ERROR]")
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
@@ -58,9 +59,9 @@ func main() {
 			IP:   conf.Address,
 		})
 	}
-
 	_, err = vpn.Create(vpn.Config{
 		MTU:            conf.MTU,
+		TTL:            time.Duration(conf.TTL) * time.Second,
 		ServerAddr:     conf.Server,
 		LocalAddr:      conf.Address,
 		HostHeader:     conf.HostHeader,

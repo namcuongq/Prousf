@@ -3,12 +3,10 @@ package network
 import (
 	"hivpn/log"
 	"sync"
-
-	"github.com/fasthttp/websocket"
 )
 
 type ARPRecord struct {
-	Conn *websocket.Conn
+	Conn chan []byte
 	Key  []byte
 }
 
@@ -25,14 +23,14 @@ func NewARP() (arp *ARP) {
 	return
 }
 
-func (arp *ARP) QueryOne(ip string) ARPRecord {
+func (arp *ARP) QueryOne(ip string) (ARPRecord, bool) {
 	// arp.mu.Lock()
 	// defer arp.mu.Unlock()
 	for _, v := range arp.Table {
-		return v
+		return v, true
 	}
 
-	return ARPRecord{}
+	return ARPRecord{}, false
 }
 
 func (arp *ARP) IsExist(ip string) bool {
@@ -42,15 +40,11 @@ func (arp *ARP) IsExist(ip string) bool {
 	return found
 }
 
-func (arp *ARP) Query(ip string) ARPRecord {
+func (arp *ARP) Query(ip string) (ARPRecord, bool) {
 	// arp.mu.Lock()
 	// defer arp.mu.Unlock()
 	conn, found := arp.Table[ip]
-	if !found {
-		return ARPRecord{}
-	}
-
-	return conn
+	return conn, found
 }
 
 func (arp *ARP) Delete(id string) {
@@ -59,18 +53,18 @@ func (arp *ARP) Delete(id string) {
 	}
 	arp.mu.Lock()
 	defer arp.mu.Unlock()
-	log.Debug("arptable remove", id)
 	delete(arp.Table, id)
+	log.Debug("arptable", arp.Table)
 }
 
-func (arp *ARP) Update(id string, conn *websocket.Conn, key []byte) {
+func (arp *ARP) Update(id string, conn chan []byte, key []byte) {
 	arp.mu.Lock()
 	defer arp.mu.Unlock()
-	current, found := arp.Table[id]
+	_, found := arp.Table[id]
 	if found {
-		current.Conn.WriteMessage(websocket.TextMessage, []byte("You have logged in at another location"))
-		current.Conn.Close()
+		// current.Conn.Close()
+		// close(current.Conn)
 	}
-
 	arp.Table[id] = ARPRecord{conn, key}
+	log.Debug("arptable", arp.Table)
 }

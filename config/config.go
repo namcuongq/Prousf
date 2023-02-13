@@ -34,7 +34,7 @@ func Load(path string) (Config, error) {
 	}
 
 	if config.TTL <= 0 {
-		config.TTL = 30
+		config.TTL = 20
 	}
 
 	if config.MTU <= 0 {
