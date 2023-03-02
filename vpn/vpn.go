@@ -56,8 +56,6 @@ type VPN struct {
 
 	inMyNetwork func(ip net.IP) bool
 	checkUpdate func(string, string, string) string
-	ping        func(*websocket.Conn) error
-	pong        func(*websocket.Conn) error
 	queryArp    func(ip string) (network.ARPRecord, bool)
 }
 
@@ -115,10 +113,7 @@ func Create(conf Config) (vpn *VPN, err error) {
 	} else { // is client mode
 		again := false
 		vpn.queryArp = vpn.arpTable.QueryOne
-		vpn.ping = func(c *websocket.Conn) error {
-			return c.WriteMessage(websocket.TextMessage, []byte("ping"))
-		}
-		vpn.pong = func(c *websocket.Conn) error { return nil }
+
 		for {
 			vpn.tryNumber++
 			if vpn.tryNumber >= MAX_TRY {
@@ -140,10 +135,6 @@ func Create(conf Config) (vpn *VPN, err error) {
 
 func (vpn *VPN) startServer() {
 	var upgrader = websocket.Upgrader{}
-	vpn.pong = func(c *websocket.Conn) error {
-		return c.WriteMessage(websocket.TextMessage, []byte("pong"))
-	}
-	vpn.ping = func(c *websocket.Conn) error { return nil }
 
 	handlerClient := func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get(AUTHEN_HEADER)
@@ -168,17 +159,15 @@ func (vpn *VPN) startServer() {
 			log.Error("Upgrade socket error:", err)
 			return
 		}
-		send := make(chan []byte)
 		defer func() {
 			c.Close()
-			close(send)
 			vpn.arpTable.Delete(idRequest)
 			log.Debug("close client", idRequest)
 		}()
 
-		vpn.arpTable.Update(idRequest, send, key)
+		arpData, _ := vpn.arpTable.Update(idRequest, key)
 
-		go vpn.devToTun(send, key, c)
+		go vpn.devToTun(arpData, c)
 		vpn.tunToDev(key, c)
 	}
 
@@ -243,10 +232,8 @@ func (vpn *VPN) startClient(again bool) {
 		return
 	}
 
-	send := make(chan []byte)
 	defer func() {
 		c.Close()
-		close(send)
 	}()
 
 	if !again {
@@ -265,8 +252,8 @@ func (vpn *VPN) startClient(again bool) {
 		fmt.Print(vpn.checkUpdate("http://"+vpn.conf.ServerAddr+VERSION_PATH, VERSION, vpn.conf.HostHeader))
 	}
 
-	vpn.arpTable.Update(vpn.myIP.String(), send, keyByte)
-	go vpn.devToTun(send, keyByte, c)
+	arpData, _ := vpn.arpTable.Update(vpn.myIP.String(), keyByte)
+	go vpn.devToTun(arpData, c)
 	vpn.tunToDev(keyByte, c)
 }
 
@@ -279,48 +266,42 @@ func (vpn *VPN) tunToDev(key []byte, c *websocket.Conn) {
 			return
 		}
 
-		if messType == websocket.TextMessage {
-			log.Trace("send pong", c.RemoteAddr())
-			err = vpn.pong(c)
+		switch messType {
+		case websocket.TextMessage:
+		default:
+			rawData, err := crypto.AESDecrypt(key, message)
 			if err != nil {
-				log.Debug("send pong error", c.RemoteAddr(), err)
+				log.Debug("decrypt data error", err)
 				return
 			}
-			continue
-		}
 
-		rawData, err := crypto.AESDecrypt(key, message)
-		if err != nil {
-			log.Debug("decrypt data error", err)
-			return
-		}
+			// header := network.ParseHeaderPacket(rawData)
+			// if vpn.conf.IsServer {
+			// 	if !vpn.myIP.Equal(header.IPDst) && vpn.arpTable.IsExist(header.IPDst.String()) {
+			// 		arp := vpn.arpTable.Query(header.IPDst.String())
+			// 		enData, err := crypto.AESEncrypt(arp.Key, rawData)
+			// 		if err != nil {
+			// 			log.Debug("tun to tun encrypt data error", err)
+			// 			continue
+			// 		}
 
-		// header := network.ParseHeaderPacket(rawData)
-		// if vpn.conf.IsServer {
-		// 	if !vpn.myIP.Equal(header.IPDst) && vpn.arpTable.IsExist(header.IPDst.String()) {
-		// 		arp := vpn.arpTable.Query(header.IPDst.String())
-		// 		enData, err := crypto.AESEncrypt(arp.Key, rawData)
-		// 		if err != nil {
-		// 			log.Debug("tun to tun encrypt data error", err)
-		// 			continue
-		// 		}
+			// 		err = arp.Conn.WriteMessage(websocket.BinaryMessage, enData)
+			// 		if err != nil {
+			// 			log.Debug("write tun to tun error", err)
+			// 		}
+			// 		continue
+			// 	}
+			// } else {
+			// 	if vpn.myIP.Equal(header.IPDst) && vpn.conf.Incognito {
+			// 		continue
+			// 	}
+			// }
 
-		// 		err = arp.Conn.WriteMessage(websocket.BinaryMessage, enData)
-		// 		if err != nil {
-		// 			log.Debug("write tun to tun error", err)
-		// 		}
-		// 		continue
-		// 	}
-		// } else {
-		// 	if vpn.myIP.Equal(header.IPDst) && vpn.conf.Incognito {
-		// 		continue
-		// 	}
-		// }
-
-		_, err = vpn.dev.Write(rawData, 0)
-		if err != nil {
-			log.Debug("write tun to dev error", err)
-			return
+			_, err = vpn.dev.Write(rawData, 0)
+			if err != nil {
+				log.Debug("write tun to dev error", err)
+				return
+			}
 		}
 	}
 }
@@ -364,7 +345,7 @@ func (vpn *VPN) captureDev() {
 	}()
 }
 
-func (vpn *VPN) devToTun(send chan []byte, key []byte, c *websocket.Conn) {
+func (vpn *VPN) devToTun(arpData network.ARPRecord, c *websocket.Conn) {
 	ticker := time.NewTicker(vpn.conf.TTL)
 	defer func() {
 		log.Debug("quit dev to tun", c.LocalAddr(), c.RemoteAddr())
@@ -373,7 +354,7 @@ func (vpn *VPN) devToTun(send chan []byte, key []byte, c *websocket.Conn) {
 
 	for {
 		select {
-		case message, ok := <-send:
+		case message, ok := <-arpData.Conn:
 			if !ok {
 				log.Debug("close dev to tun", c.LocalAddr(), c.RemoteAddr())
 				return
@@ -386,7 +367,7 @@ func (vpn *VPN) devToTun(send chan []byte, key []byte, c *websocket.Conn) {
 			}
 		case <-ticker.C:
 			log.Trace("send ping", c.RemoteAddr())
-			err := vpn.ping(c)
+			err := c.WriteMessage(websocket.TextMessage, []byte("ping"))
 			if err != nil {
 				log.Debug("send ping error", err)
 				return
