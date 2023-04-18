@@ -68,11 +68,12 @@ const (
 	WEBSOCKET_PATH              = "/tunnel"
 	VERSION_PATH                = "/version"
 	AUTHEN_HEADER               = "User"
+	USERAGENT                   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.3"
 	ERROR_AUTHENTICATION_FAILED = "Authentication failed"
 	ERROR_LOGGED_ANOTHER        = "You have logged in at another location"
 
-	VERSION = "2.0.0"
-	RELEASE = "(10/02/2023)"
+	VERSION = "2.0.1"
+	RELEASE = "(18/04/2023)"
 )
 
 var (
@@ -212,6 +213,7 @@ func (vpn *VPN) startClient(again bool) {
 
 	headerReq := http.Header{
 		AUTHEN_HEADER: []string{tokenUser},
+		"User-Agent":  []string{USERAGENT},
 	}
 
 	if len(vpn.conf.HostHeader) > 0 {
