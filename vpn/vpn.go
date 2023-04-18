@@ -67,12 +67,12 @@ const (
 
 	WEBSOCKET_PATH              = "/home"
 	VERSION_PATH                = "/version"
-	AUTHEN_HEADER               = "User"
+	AUTHEN_HEADER               = "Cookie"
 	USERAGENT                   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.3"
 	ERROR_AUTHENTICATION_FAILED = "Authentication failed"
 	ERROR_LOGGED_ANOTHER        = "You have logged in at another location"
 
-	VERSION = "2.0.1"
+	VERSION = "2.0.2"
 	RELEASE = "(18/04/2023)"
 )
 
