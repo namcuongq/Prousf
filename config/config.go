@@ -25,6 +25,12 @@ type Config struct {
 		Password  string
 		Ipaddress string
 	}
+
+	SSL    bool
+	SSLKey string
+	SSLCrt string
+
+	RedirectGateway string
 }
 
 func Load(path string) (Config, error) {
@@ -39,6 +45,10 @@ func Load(path string) (Config, error) {
 
 	if config.MTU <= 0 {
 		config.MTU = 1500
+	}
+
+	if config.RedirectGateway == "" {
+		config.RedirectGateway = "0.0.0.0/0"
 	}
 
 	return config, nil

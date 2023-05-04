@@ -60,16 +60,20 @@ func main() {
 		})
 	}
 	_, err = vpn.Create(vpn.Config{
-		MTU:            conf.MTU,
-		TTL:            time.Duration(conf.TTL) * time.Second,
-		ServerAddr:     conf.Server,
-		LocalAddr:      conf.Address,
-		HostHeader:     conf.HostHeader,
-		DefaultGateway: conf.DefaultGateway,
-		IsServer:       ServerMode,
-		Users:          usersAuthen,
-		Whitelist:      conf.Whitelist,
-		Blacklist:      conf.Blacklist,
+		MTU:             conf.MTU,
+		TTL:             time.Duration(conf.TTL) * time.Second,
+		ServerAddr:      conf.Server,
+		LocalAddr:       conf.Address,
+		HostHeader:      conf.HostHeader,
+		DefaultGateway:  conf.DefaultGateway,
+		IsServer:        ServerMode,
+		Users:           usersAuthen,
+		Whitelist:       conf.Whitelist,
+		Blacklist:       conf.Blacklist,
+		SSL:             conf.SSL,
+		SSLKey:          conf.SSLKey,
+		SSLCrt:          conf.SSLCrt,
+		RedirectGateway: conf.RedirectGateway,
 	})
 	if err != nil {
 		log.Error("Cannot start tunnel vpn:", err)

@@ -1,6 +1,8 @@
 package vpn
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"hivpn/crypto"
@@ -9,6 +11,7 @@ import (
 	"hivpn/tun"
 	"hivpn/utils"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -35,6 +38,12 @@ type Config struct {
 	Blacklist      []string
 	Users          []User
 	Incognito      bool
+
+	SSL    bool
+	SSLKey string
+	SSLCrt string
+
+	RedirectGateway string
 }
 
 type User struct {
@@ -72,8 +81,8 @@ const (
 	ERROR_AUTHENTICATION_FAILED = "Authentication failed"
 	ERROR_LOGGED_ANOTHER        = "You have logged in at another location"
 
-	VERSION = "2.0.2"
-	RELEASE = "(18/04/2023)"
+	VERSION = "2.0.3"
+	RELEASE = "(04/05/2023)"
 )
 
 var (
@@ -184,7 +193,13 @@ func (vpn *VPN) startServer() {
 	}
 	log.Info("VPN Server started successfully!")
 	log.Info("Version:", VERSION, "-", RELEASE)
-	http.ListenAndServe(vpn.conf.ServerAddr, nil)
+	if vpn.conf.SSL {
+		log.Info("Listen:", vpn.conf.ServerAddr, "- SSL")
+		log.Error(http.ListenAndServeTLS(vpn.conf.ServerAddr, vpn.conf.SSLCrt, vpn.conf.SSLKey, nil))
+	} else {
+		log.Info("Listen:", vpn.conf.ServerAddr, "- No SSL")
+		log.Error(http.ListenAndServe(vpn.conf.ServerAddr, nil))
+	}
 
 }
 
@@ -209,7 +224,11 @@ func (vpn *VPN) startClient(again bool) {
 
 	var c *websocket.Conn
 	var resp *http.Response
-	u := url.URL{Scheme: "ws", Host: vpn.conf.ServerAddr, Path: WEBSOCKET_PATH}
+	scheme := "ws"
+	if vpn.conf.SSL {
+		scheme = "wss"
+	}
+	u := url.URL{Scheme: scheme, Host: vpn.conf.ServerAddr, Path: WEBSOCKET_PATH}
 
 	headerReq := http.Header{
 		AUTHEN_HEADER: []string{tokenUser},
@@ -221,6 +240,25 @@ func (vpn *VPN) startClient(again bool) {
 	}
 
 	dialer := websocket.Dialer{}
+	if vpn.conf.SSL {
+		caCert, err := ioutil.ReadFile(vpn.conf.SSLCrt)
+		if err != nil {
+			log.Error("Error opening cert file "+vpn.conf.SSLCrt+", error:", err)
+			return
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		tlsConfig := &tls.Config{
+			RootCAs:            caCertPool,
+			InsecureSkipVerify: true,
+		}
+
+		dialer = websocket.Dialer{
+			TLSClientConfig: tlsConfig,
+		}
+	}
+
 	c, resp, err := dialer.Dial(u.String(), headerReq)
 	if err != nil {
 		var b []byte
@@ -250,9 +288,13 @@ func (vpn *VPN) startClient(again bool) {
 	log.Info("VPN Client started successfully!")
 	log.Info("Version:", VERSION, "-", RELEASE)
 	vpn.tryNumber = 0
-	if !again {
-		fmt.Print(vpn.checkUpdate("http://"+vpn.conf.ServerAddr+VERSION_PATH, VERSION, vpn.conf.HostHeader))
-	}
+	// if !again {
+	// scheme := "http://"
+	// if vpn.conf.SSL {
+	// 	scheme = "https://"
+	// }
+	// fmt.Print(vpn.checkUpdate(scheme+vpn.conf.ServerAddr+VERSION_PATH, VERSION, vpn.conf.HostHeader))
+	// }
 
 	arpData, _ := vpn.arpTable.Update(vpn.myIP.String(), keyByte)
 	go vpn.devToTun(arpData, c)
@@ -473,7 +515,8 @@ func (vpn *VPN) setupRoute() error {
 
 		tunCmd := [][]string{
 			{"netsh", "interface", "ip", "set", "address", fmt.Sprintf("name=%d", iface.Index), "source=static", "addr=" + network.GetIp(vpn.conf.LocalAddr), "mask=" + network.CIDRToMask(vpn.conf.LocalAddr), "gateway=none"},
-			{"route", "add", "0.0.0.0", "mask", "0.0.0.0", vpn.conf.DefaultGateway, "if", fmt.Sprintf("%d", iface.Index), "metric", "5"},
+			{"route", "add", network.GetIp(vpn.conf.RedirectGateway), "mask", network.CIDRToMask(vpn.conf.RedirectGateway), vpn.conf.DefaultGateway, "if", fmt.Sprintf("%d", iface.Index), "metric", "5"},
+			// {"route", "add", "0.0.0.0", "mask", "0.0.0.0", vpn.conf.DefaultGateway, "if", fmt.Sprintf("%d", iface.Index), "metric", "5"},
 			// {"route", "add", network.GetIp(vpn.conf.ServerAddr), "mask", "255.255.255.255", currentDefaultGateway.Gateway},
 		}
 
