@@ -10,3 +10,10 @@ Incognito      = true
 Whitelist 	   = []
 Blacklist 	   = []
 Incognito      = false
+
+# enable https
+SSL            = true
+SSLCrt         = "server.crt"
+
+# route specific additional networks through the VPN, set empty if you want to route all traffic through the VPN
+RedirectGateway= ""

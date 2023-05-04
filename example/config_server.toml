@@ -5,3 +5,7 @@ TTL            = 30
 Users = [
 	{Username = "user", Password = "password", Ipaddress = "172.16.0.13/24"},
 ]
+# enable https
+SSL            = true
+SSLKey         = "server.key"
+SSLCrt         = "server.crt"
