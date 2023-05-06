@@ -1,7 +1,7 @@
 package network
 
 import (
-	"hivpn/log"
+	"prousf/log"
 	"sync"
 )
 

@@ -1,4 +1,4 @@
-module hivpn
+module prousf
 
 go 1.18
 

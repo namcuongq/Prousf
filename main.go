@@ -2,11 +2,11 @@ package main
 
 import (
 	"flag"
-	"hivpn/config"
-	"hivpn/log"
-	"hivpn/utils"
-	"hivpn/vpn"
 	"os"
+	"prousf/config"
+	"prousf/log"
+	"prousf/utils"
+	"prousf/vpn"
 	"runtime"
 	"time"
 )
